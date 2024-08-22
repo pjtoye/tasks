@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .total-time {
+            color: #666;
+            font-size: 16px;
+            margin-top: 5px;
+            font-weight: bold;
+        }
+        .task-list {
+            margin-top: 20px;
+        }
+        .task-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .task-item input[type="text"] {
+            border: none;
+            font-size: 16px;
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        .task-item input[type="number"] {
+            width: 50px;
+            border: none;
+            font-size: 16px;
+            text-align: right;
+        }
+        .task-item.completed input[type="text"] {
+            text-decoration: line-through;
+            color: #999;
+        }
+        .add-task {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 50px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+        .add-task:hover {
+            background-color: #f0f0f0;
+        }
+        #startTasksBtn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #startTasksBtn:hover {
+            background-color: #45a049;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .controls button {
+            margin: 0 10px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        #taskPopup {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 300px;
+            background-color: #2c2c2c;
+            color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #taskPopup .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+            background-color: #1e1e1e;
+            font-size: 12px;
+        }
+        #taskPopup .content {
+            display: flex;
+            padding: 10px;
+            align-items: center;
+        }
+        #taskPopup .timer {
+            background-color: #ffa500;
+            color: black;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-right: 10px;
+            transition: background-color 0.3s;
+        }
+        #taskPopup .timer.overtime {
+            background-color: #4CAF50;
+        }
+        #taskPopup .task-name {
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #taskPopup .controls {
+            display: none;
+            margin-left: 10px;
+        }
+        #taskPopup:hover .controls {
+            display: flex;
+        }
+        #taskPopup .controls button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tasks</h1>
+        <div class="total-time" id="totalTime">00h 00m</div>
+        <div class="task-list" id="taskList">
+            <!-- Predefined tasks will be added here by JavaScript -->
+        </div>
+        <div class="add-task" id="addTaskBtn">+</div>
+        <button id="startTasksBtn">Start Tasks</button>
+    </div>
+
+    <div id="taskPopup" style="display: none;">
+        <div class="header">
+            <span>app.forget.work</span>
+            <span>⛶ ×</span>
+        </div>
+        <div class="content">
+            <div class="timer" id="timer">00:00</div>
+            <div class="task-name" id="currentTask"></div>
+            <div class="controls">
+                <button id="pausePlay">⏸️</button>
+                <button id="complete">✅</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tasks = [];
+        let currentTaskIndex = 0;
+        let timeLeft = 0;
+        let timerInterval;
+        let isPaused = false;
+        let isOvertime = false;
+        let originalDuration = 0;
+        let totalTimeElapsed = 0;
+        let totalTimeInterval;
+        let audioContext;
+
+        function initializeSound() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playPingSound() {
+            if (audioContext) {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // 440 Hz - A4 note
+
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + 0.01);
+                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.3);
+
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            }
+        }
+
+        function addTask(name, duration, isRemovable = true) {
+            const taskList = document.getElementById('taskList');
+            const taskDiv = document.createElement('div');
+            taskDiv.className = 'task-item';
+            taskDiv.innerHTML = `
+                <input type="text" value="${name}" placeholder="Task name">
+                <input type="number" value="${duration}" placeholder="Duration (minutes)">
+                ${isRemovable ? '<button class="remove-task">×</button>' : ''}
+            `;
+            if (isRemovable) {
+                taskDiv.querySelector('.remove-task').addEventListener('click', function() {
+                    taskDiv.remove();
+                });
+            }
+            taskList.appendChild(taskDiv);
+        }
+
+        function initializePredefinedTasks() {
+            addTask("emails", 2, false);
+            addTask("leads", 1, false);
+        }
+
+        function startTasks() {
+            tasks = Array.from(document.querySelectorAll('.task-item')).map(div => ({
+                name: div.querySelector('input[type="text"]').value,
+                duration: parseInt(div.querySelector('input[type="number"]').value) * 60
+            }));
+
+            if (tasks.length > 0) {
+                currentTaskIndex = 0;
+                startNextTask();
+                document.getElementById('taskPopup').style.display = 'block';
+                startTotalTimeCounter();
+            }
+        }
+
+        function startNextTask() {
+            if (currentTaskIndex < tasks.length) {
+                currentTask = tasks[currentTaskIndex];
+                document.getElementById('currentTask').textContent = currentTask.name;
+                timeLeft = currentTask.duration;
+                originalDuration = timeLeft;
+                isOvertime = false;
+                updateTimerDisplay();
+                clearInterval(timerInterval);
+                timerInterval = setInterval(updateTimer, 1000);
+            } else {
+                document.getElementById('taskPopup').style.display = 'none';
+                alert('All tasks completed!');
+            }
+        }
+
+        function startTotalTimeCounter() {
+            totalTimeElapsed = 0;
+            updateTotalTimeDisplay();
+            totalTimeInterval = setInterval(() => {
+                totalTimeElapsed++;
+                updateTotalTimeDisplay();
+            }, 1000);
+        }
+
+        function updateTotalTimeDisplay() {
+            const hours = Math.floor(totalTimeElapsed / 3600);
+            const minutes = Math.floor((totalTimeElapsed % 3600) / 60);
+            document.getElementById('totalTime').textContent = 
+                `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m`;
+        }
+
+        function updateTimer() {
+            if (!isPaused) {
+                if (isOvertime) {
+                    timeLeft++;
+                } else {
+                    timeLeft--;
+                }
+                updateTimerDisplay();
+                if (timeLeft <= 0) {
+                    isOvertime = true;
+                    document.getElementById('timer').classList.add('overtime');
+                }
+                if (timeLeft % 10 === 0) {
+                    playPingSound();
+                }
+            }
+        }
+
+        function updateTimerDisplay() {
+            const minutes = Math.floor(Math.abs(timeLeft) / 60);
+            const seconds = Math.abs(timeLeft) % 60;
+            const sign = isOvertime ? '+' : '';
+            document.getElementById('timer').textContent = 
+                `${sign}${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function finishTask() {
+            clearInterval(timerInterval);
+            currentTaskIndex++;
+            if (currentTaskIndex >= tasks.length) {
+                clearInterval(totalTimeInterval);
+                document.getElementById('taskPopup').style.display = 'none';
+                alert('All tasks completed!');
+            } else {
+                startNextTask();
+            }
+        }
+
+        // Initialize sound and add event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeSound();
+            initializePredefinedTasks();
+            document.getElementById('addTaskBtn').addEventListener('click', () => addTask("", ""));
+            document.getElementById('startTasksBtn').addEventListener('click', function() {
+                // Initialize audio context on user interaction to comply with autoplay policies
+                if (!audioContext) {
+                    initializeSound();
+                }
+                startTasks();
+            });
+            document.getElementById('pausePlay').addEventListener('click', function() {
+                isPaused = !isPaused;
+                this.textContent = isPaused ? '▶️' : '⏸️';
+            });
+            document.getElementById('complete').addEventListener('click', finishTask);
+        });
+
+        // Drag functionality
+        const popup = document.getElementById('taskPopup');
+        let isDragging = false;
+        let currentX;
+        let currentY;
+        let initialX;
+        let initialY;
+        let xOffset = 0;
+        let yOffset = 0;
+
+        popup.addEventListener("mousedown", dragStart);
+        document.addEventListener("mousemove", drag);
+        document.addEventListener("mouseup", dragEnd);
+
+        function dragStart(e) {
+            initialX = e.clientX - xOffset;
+            initialY = e.clientY - yOffset;
+            if (e.target === popup) {
+                isDragging = true;
+            }
+        }
+
+        function drag(e) {
+            if (isDragging) {
+                e.preventDefault();
+                currentX = e.clientX - initialX;
+                currentY = e.clientY - initialY;
+                xOffset = currentX;
+                yOffset = currentY;
+                setTranslate(currentX, currentY, popup);
+            }
+        }
+
+        function setTranslate(xPos, yPos, el) {
+            el.style.transform = `translate3d(${xPos}px, ${yPos}px, 0)`;
+        }
+
+        function dragEnd(e) {
+            initialX = currentX;
+            initialY = currentY;
+            isDragging = false;
+        }
+    </script>
+</body>
+</html>
+
